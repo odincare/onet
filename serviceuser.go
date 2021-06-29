@@ -2,11 +2,12 @@ package onet
 
 import (
 	"fmt"
+	"net"
+	"sync"
+
 	"github.com/odincare/odicom"
 	"github.com/odincare/odicom/dicomio"
 	"github.com/odincare/odicom/dicomtag"
-	"net"
-	"sync"
 
 	"github.com/sirupsen/logrus"
 )
@@ -168,7 +169,8 @@ func (su *ServiceUser) waitUntilReady() error {
 // Connect或SetConn必须在CStore调用前调用，etc
 func (su *ServiceUser) Connect(serverAddr string) {
 	if su.status != serviceUserInitial {
-		logrus.Panic(fmt.Errorf("dicom_server.serviceUser: 连接调用了错误的状态: %v", su.status))
+		logrus.Error(fmt.Errorf("dicom_server.serviceUser: 连接调用了错误的状态: %v", su.status))
+		return
 	}
 
 	conn, err := net.Dial("tcp", serverAddr)

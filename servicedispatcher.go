@@ -123,7 +123,8 @@ func (disp *serviceDispatcher) deleteCommand(cs *serviceCommandState) {
 	disp.mutex.Lock()
 	logrus.Infof("dicom_server.serviceDispatcher(%s): Finish provider command %v", disp.label, cs.messageID)
 	if _, ok := disp.activeCommands[cs.messageID]; !ok {
-		logrus.Panic(fmt.Sprintf("cs %+v", cs))
+		logrus.Errorf(fmt.Sprintf("cs %+v", cs))
+		return
 	}
 	delete(disp.activeCommands, cs.messageID)
 	disp.mutex.Unlock()

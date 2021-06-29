@@ -2,14 +2,15 @@ package onet
 
 import (
 	"fmt"
-	"github.com/odincare/odicom/dicomio"
-	"github.com/odincare/odicom/dicomuid"
-	"github.com/odincare/onet/dimse"
-	"github.com/odincare/onet/pdu"
 	"io"
 	"net"
 	"strings"
 	"time"
+
+	"github.com/odincare/odicom/dicomio"
+	"github.com/odincare/odicom/dicomuid"
+	"github.com/odincare/onet/dimse"
+	"github.com/odincare/onet/pdu"
 
 	"github.com/sirupsen/logrus"
 )
@@ -131,7 +132,7 @@ func (e *eventType) String() string {
 	case evt19:
 		description = "Unrecognized or invalid PDU received"
 	default:
-		panic(fmt.Sprintf("dicom.stateMachine: Unknown event type %v", int(*e)))
+		logrus.Errorf(fmt.Sprintf("dicom.stateMachine: Unknown event type %v", int(*e)))
 	}
 	return fmt.Sprintf("evt%02d(%s)", *e, description)
 }
@@ -327,11 +328,12 @@ var actionAe8 = &stateAction{"AE-8", "Send A-ASSOCIATE-RJ PDU and start ARTIM ti
 func splitDataIntoPDUs(sm *stateMachine, abstractSyntaxName string, command bool, data []byte) []pdu.PDataTf {
 	dicomio.DoAssert(len(data) > 0)
 	context, err := sm.contextManager.lookupByAbstractSyntaxUID(abstractSyntaxName)
+	var pdus []pdu.PDataTf
 	if err != nil {
 		// TODO 不要在这里panic
-		panic(fmt.Sprintf("dicom.stateMachine(%s): Illegal syntax name %s: %s", sm.label, dicomuid.UIDString(abstractSyntaxName), err))
+		logrus.Errorf(fmt.Sprintf("dicom.stateMachine(%s): Illegal syntax name %s: %s", sm.label, dicomuid.UIDString(abstractSyntaxName), err))
+		return pdus
 	}
-	var pdus []pdu.PDataTf
 	// two byte header overhead.
 	//
 	// TODO 干掉魔法数字
@@ -344,7 +346,7 @@ func splitDataIntoPDUs(sm *stateMachine, abstractSyntaxName string, command bool
 		chunk := data[0:chunkSize]
 		data = data[chunkSize:]
 		pdus = append(pdus, pdu.PDataTf{Items: []pdu.PresentationDataValueItem{
-			pdu.PresentationDataValueItem{
+			{
 				ContextID: context.contextID,
 				Command:   command,
 				Last:      false, // Set later.
@@ -368,8 +370,9 @@ var actionDt1 = &stateAction{"DT-1", "Send P-DATA-TF PDU",
 		e := dicomio.NewBytesEncoder(nil, dicomio.UnknownVR)
 		dimse.EncodeMessage(e, command)
 		if e.Error() != nil {
-			logrus.Panic(fmt.Sprintf("Failed to encode DIMSE cmd %v: %v", command, e.Error()))
+			logrus.Errorf(fmt.Sprintf("---------Failed to encode DIMSE cmd %v: %v", command, e.Error()))
 		}
+
 		logrus.Infof("dicom_server.stateMachine(%s): Send DIMSE msg: %v", sm.label, command)
 		pdus := splitDataIntoPDUs(sm, event.dimsePayload.abstractSyntaxName, true /*command*/, e.Bytes())
 		for _, pdu := range pdus {
@@ -382,7 +385,7 @@ var actionDt1 = &stateAction{"DT-1", "Send P-DATA-TF PDU",
 				sendPDU(sm, &pdu)
 			}
 		} else if len(event.dimsePayload.data) > 0 {
-			logrus.Panic(fmt.Sprintf("dicom.stateMachine(%s): Found DIMSE data of %db, command: %v", sm.label, len(event.dimsePayload.data), command))
+			logrus.Errorf(fmt.Sprintf("dicom.stateMachine(%s): Found DIMSE data of %db, command: %v", sm.label, len(event.dimsePayload.data), command))
 		}
 		return sta06
 	}}
@@ -451,7 +454,7 @@ var actionAr7 = &stateAction{"AR-7", "Issue P-DATA-TF PDU",
 		e := dicomio.NewBytesEncoder(nil, dicomio.UnknownVR)
 		dimse.EncodeMessage(e, command)
 		if e.Error() != nil {
-			panic(fmt.Sprintf("dicom.StateMachine %s: Failed to encode DIMSE cmd %v: %v", sm.label, command, e.Error()))
+			logrus.Errorf(fmt.Sprintf("dicom.StateMachine %s: Failed to encode DIMSE cmd %v: %v", sm.label, command, e.Error()))
 		}
 		pdus := splitDataIntoPDUs(sm, event.dimsePayload.abstractSyntaxName, true /*command*/, e.Bytes())
 		for _, pdu := range pdus {
@@ -573,138 +576,138 @@ type stateTransition struct {
 
 // 这里会让 当前状态+事件 => 走向对应的事件
 var stateTransitions = []stateTransition{
-	stateTransition{sta01, evt01, actionAe1},
-	stateTransition{sta01, evt05, actionAe5},
-	stateTransition{sta02, evt03, actionAa1},
-	stateTransition{sta02, evt04, actionAa1},
-	stateTransition{sta02, evt06, actionAe6},
-	stateTransition{sta02, evt10, actionAa1},
-	stateTransition{sta02, evt12, actionAa1},
-	stateTransition{sta02, evt13, actionAa1},
-	stateTransition{sta02, evt16, actionAa2},
-	stateTransition{sta02, evt17, actionAa5},
-	stateTransition{sta02, evt18, actionAa2},
-	stateTransition{sta02, evt19, actionAa1},
-	stateTransition{sta03, evt03, actionAa8},
-	stateTransition{sta03, evt04, actionAa8},
-	stateTransition{sta03, evt06, actionAa8},
-	stateTransition{sta03, evt07, actionAe7},
-	stateTransition{sta03, evt08, actionAe8},
-	stateTransition{sta03, evt10, actionAa8},
-	stateTransition{sta03, evt12, actionAa8},
-	stateTransition{sta03, evt13, actionAa8},
-	stateTransition{sta03, evt15, actionAa1},
-	stateTransition{sta03, evt16, actionAa3},
-	stateTransition{sta03, evt17, actionAa4},
-	stateTransition{sta03, evt19, actionAa8},
-	stateTransition{sta04, evt02, actionAe2},
-	stateTransition{sta04, evt15, actionAa2},
-	stateTransition{sta04, evt17, actionAa4},
-	stateTransition{sta05, evt03, actionAe3},
-	stateTransition{sta05, evt04, actionAe4},
-	stateTransition{sta05, evt06, actionAa8},
-	stateTransition{sta05, evt10, actionAa8},
-	stateTransition{sta05, evt12, actionAa8},
-	stateTransition{sta05, evt13, actionAa8},
-	stateTransition{sta05, evt15, actionAa1},
-	stateTransition{sta05, evt16, actionAa3},
-	stateTransition{sta05, evt17, actionAa4},
-	stateTransition{sta05, evt18, actionAa8},
-	stateTransition{sta05, evt19, actionAa8},
+	{sta01, evt01, actionAe1},
+	{sta01, evt05, actionAe5},
+	{sta02, evt03, actionAa1},
+	{sta02, evt04, actionAa1},
+	{sta02, evt06, actionAe6},
+	{sta02, evt10, actionAa1},
+	{sta02, evt12, actionAa1},
+	{sta02, evt13, actionAa1},
+	{sta02, evt16, actionAa2},
+	{sta02, evt17, actionAa5},
+	{sta02, evt18, actionAa2},
+	{sta02, evt19, actionAa1},
+	{sta03, evt03, actionAa8},
+	{sta03, evt04, actionAa8},
+	{sta03, evt06, actionAa8},
+	{sta03, evt07, actionAe7},
+	{sta03, evt08, actionAe8},
+	{sta03, evt10, actionAa8},
+	{sta03, evt12, actionAa8},
+	{sta03, evt13, actionAa8},
+	{sta03, evt15, actionAa1},
+	{sta03, evt16, actionAa3},
+	{sta03, evt17, actionAa4},
+	{sta03, evt19, actionAa8},
+	{sta04, evt02, actionAe2},
+	{sta04, evt15, actionAa2},
+	{sta04, evt17, actionAa4},
+	{sta05, evt03, actionAe3},
+	{sta05, evt04, actionAe4},
+	{sta05, evt06, actionAa8},
+	{sta05, evt10, actionAa8},
+	{sta05, evt12, actionAa8},
+	{sta05, evt13, actionAa8},
+	{sta05, evt15, actionAa1},
+	{sta05, evt16, actionAa3},
+	{sta05, evt17, actionAa4},
+	{sta05, evt18, actionAa8},
+	{sta05, evt19, actionAa8},
 
-	stateTransition{sta06, evt03, actionAa8},
-	stateTransition{sta06, evt04, actionAa8},
-	stateTransition{sta06, evt06, actionAa8},
-	stateTransition{sta06, evt09, actionDt1},
-	stateTransition{sta06, evt10, actionDt2},
-	stateTransition{sta06, evt11, actionAr1},
-	stateTransition{sta06, evt12, actionAr2},
-	stateTransition{sta06, evt13, actionAa8},
-	stateTransition{sta06, evt15, actionAa1},
-	stateTransition{sta06, evt16, actionAa3},
-	stateTransition{sta06, evt17, actionAa4},
-	stateTransition{sta06, evt19, actionAa8},
-	stateTransition{sta07, evt03, actionAa8},
-	stateTransition{sta07, evt04, actionAa8},
-	stateTransition{sta07, evt06, actionAa8},
-	stateTransition{sta07, evt10, actionAr6},
-	stateTransition{sta07, evt12, actionAr8},
-	stateTransition{sta07, evt13, actionAr3},
-	stateTransition{sta07, evt15, actionAa1},
-	stateTransition{sta07, evt16, actionAa3},
-	stateTransition{sta07, evt17, actionAa4},
-	stateTransition{sta07, evt19, actionAa8},
-	stateTransition{sta08, evt03, actionAa8},
-	stateTransition{sta08, evt04, actionAa8},
-	stateTransition{sta08, evt06, actionAa8},
-	stateTransition{sta08, evt09, actionAr7},
-	stateTransition{sta08, evt10, actionAa8},
-	stateTransition{sta08, evt12, actionAa8},
-	stateTransition{sta08, evt13, actionAa8},
-	stateTransition{sta08, evt14, actionAr4},
-	stateTransition{sta08, evt15, actionAa1},
-	stateTransition{sta08, evt16, actionAa3},
-	stateTransition{sta08, evt17, actionAa4},
-	stateTransition{sta08, evt19, actionAa8},
-	stateTransition{sta09, evt03, actionAa8},
-	stateTransition{sta09, evt04, actionAa8},
-	stateTransition{sta09, evt06, actionAa8},
-	stateTransition{sta09, evt10, actionAa8},
-	stateTransition{sta09, evt12, actionAa8},
-	stateTransition{sta09, evt13, actionAa8},
-	stateTransition{sta09, evt14, actionAr9},
-	stateTransition{sta09, evt15, actionAa1},
-	stateTransition{sta09, evt16, actionAa3},
-	stateTransition{sta09, evt17, actionAa4},
-	stateTransition{sta09, evt19, actionAa8},
-	stateTransition{sta10, evt03, actionAa8},
-	stateTransition{sta10, evt04, actionAa8},
-	stateTransition{sta10, evt06, actionAa8},
-	stateTransition{sta10, evt10, actionAa8},
-	stateTransition{sta10, evt12, actionAa8},
-	stateTransition{sta10, evt13, actionAr10},
-	stateTransition{sta10, evt15, actionAa1},
-	stateTransition{sta10, evt16, actionAa3},
-	stateTransition{sta10, evt17, actionAa4},
-	stateTransition{sta10, evt19, actionAa8},
-	stateTransition{sta11, evt03, actionAa8},
-	stateTransition{sta11, evt04, actionAa8},
-	stateTransition{sta11, evt06, actionAa8},
-	stateTransition{sta11, evt10, actionAa8},
-	stateTransition{sta11, evt12, actionAa8},
-	stateTransition{sta11, evt13, actionAr3},
-	stateTransition{sta11, evt15, actionAa1},
-	stateTransition{sta11, evt16, actionAa3},
-	stateTransition{sta11, evt17, actionAa4},
-	stateTransition{sta11, evt19, actionAa8},
-	stateTransition{sta12, evt03, actionAa8},
-	stateTransition{sta12, evt04, actionAa8},
-	stateTransition{sta12, evt06, actionAa8},
-	stateTransition{sta12, evt10, actionAa8},
-	stateTransition{sta12, evt12, actionAa8},
-	stateTransition{sta12, evt13, actionAa8},
-	stateTransition{sta12, evt14, actionAr4},
-	stateTransition{sta12, evt15, actionAa1},
-	stateTransition{sta12, evt16, actionAa3},
-	stateTransition{sta12, evt17, actionAa4},
-	stateTransition{sta12, evt19, actionAa8},
+	{sta06, evt03, actionAa8},
+	{sta06, evt04, actionAa8},
+	{sta06, evt06, actionAa8},
+	{sta06, evt09, actionDt1},
+	{sta06, evt10, actionDt2},
+	{sta06, evt11, actionAr1},
+	{sta06, evt12, actionAr2},
+	{sta06, evt13, actionAa8},
+	{sta06, evt15, actionAa1},
+	{sta06, evt16, actionAa3},
+	{sta06, evt17, actionAa4},
+	{sta06, evt19, actionAa8},
+	{sta07, evt03, actionAa8},
+	{sta07, evt04, actionAa8},
+	{sta07, evt06, actionAa8},
+	{sta07, evt10, actionAr6},
+	{sta07, evt12, actionAr8},
+	{sta07, evt13, actionAr3},
+	{sta07, evt15, actionAa1},
+	{sta07, evt16, actionAa3},
+	{sta07, evt17, actionAa4},
+	{sta07, evt19, actionAa8},
+	{sta08, evt03, actionAa8},
+	{sta08, evt04, actionAa8},
+	{sta08, evt06, actionAa8},
+	{sta08, evt09, actionAr7},
+	{sta08, evt10, actionAa8},
+	{sta08, evt12, actionAa8},
+	{sta08, evt13, actionAa8},
+	{sta08, evt14, actionAr4},
+	{sta08, evt15, actionAa1},
+	{sta08, evt16, actionAa3},
+	{sta08, evt17, actionAa4},
+	{sta08, evt19, actionAa8},
+	{sta09, evt03, actionAa8},
+	{sta09, evt04, actionAa8},
+	{sta09, evt06, actionAa8},
+	{sta09, evt10, actionAa8},
+	{sta09, evt12, actionAa8},
+	{sta09, evt13, actionAa8},
+	{sta09, evt14, actionAr9},
+	{sta09, evt15, actionAa1},
+	{sta09, evt16, actionAa3},
+	{sta09, evt17, actionAa4},
+	{sta09, evt19, actionAa8},
+	{sta10, evt03, actionAa8},
+	{sta10, evt04, actionAa8},
+	{sta10, evt06, actionAa8},
+	{sta10, evt10, actionAa8},
+	{sta10, evt12, actionAa8},
+	{sta10, evt13, actionAr10},
+	{sta10, evt15, actionAa1},
+	{sta10, evt16, actionAa3},
+	{sta10, evt17, actionAa4},
+	{sta10, evt19, actionAa8},
+	{sta11, evt03, actionAa8},
+	{sta11, evt04, actionAa8},
+	{sta11, evt06, actionAa8},
+	{sta11, evt10, actionAa8},
+	{sta11, evt12, actionAa8},
+	{sta11, evt13, actionAr3},
+	{sta11, evt15, actionAa1},
+	{sta11, evt16, actionAa3},
+	{sta11, evt17, actionAa4},
+	{sta11, evt19, actionAa8},
+	{sta12, evt03, actionAa8},
+	{sta12, evt04, actionAa8},
+	{sta12, evt06, actionAa8},
+	{sta12, evt10, actionAa8},
+	{sta12, evt12, actionAa8},
+	{sta12, evt13, actionAa8},
+	{sta12, evt14, actionAr4},
+	{sta12, evt15, actionAa1},
+	{sta12, evt16, actionAa3},
+	{sta12, evt17, actionAa4},
+	{sta12, evt19, actionAa8},
 
-	stateTransition{sta13, evt03, actionAa6},
-	stateTransition{sta13, evt04, actionAa6},
-	stateTransition{sta13, evt06, actionAa7},
-	stateTransition{sta13, evt07, actionAa7},
-	stateTransition{sta13, evt08, actionAa7},
-	stateTransition{sta13, evt09, actionAa7},
-	stateTransition{sta13, evt10, actionAa6},
-	stateTransition{sta13, evt11, actionAa6},
-	stateTransition{sta13, evt12, actionAa6},
-	stateTransition{sta13, evt13, actionAa6},
-	stateTransition{sta13, evt14, actionAa6},
-	stateTransition{sta13, evt15, actionAa2},
-	stateTransition{sta13, evt16, actionAa2},
-	stateTransition{sta13, evt17, actionAr5},
-	stateTransition{sta13, evt18, actionAa2},
-	stateTransition{sta13, evt19, actionAa7},
+	{sta13, evt03, actionAa6},
+	{sta13, evt04, actionAa6},
+	{sta13, evt06, actionAa7},
+	{sta13, evt07, actionAa7},
+	{sta13, evt08, actionAa7},
+	{sta13, evt09, actionAa7},
+	{sta13, evt10, actionAa6},
+	{sta13, evt11, actionAa6},
+	{sta13, evt12, actionAa6},
+	{sta13, evt13, actionAa6},
+	{sta13, evt14, actionAa6},
+	{sta13, evt15, actionAa2},
+	{sta13, evt16, actionAa2},
+	{sta13, evt17, actionAr5},
+	{sta13, evt18, actionAa2},
+	{sta13, evt19, actionAa7},
 }
 
 // 每一个tcp连接的状态

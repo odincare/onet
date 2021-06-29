@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"github.com/odincare/odicom/dicomio"
 	"io"
+
+	"github.com/odincare/odicom/dicomio"
+	"github.com/sirupsen/logrus"
 )
 
 // protocol data unit
@@ -203,7 +205,7 @@ func decodePresentationContextItem(d *dicomio.Decoder, itemType byte, length uin
 func (v *PresentationContextItem) Write(e *dicomio.Encoder) {
 	if v.Type != ItemTypePresentationContextRequest &&
 		v.Type != ItemTypePresentationContextResponse {
-		panic(*v)
+		logrus.Error(*v)
 	}
 
 	itemEncoder := dicomio.NewBytesEncoder(binary.BigEndian, dicomio.UnknownVR)
@@ -289,7 +291,7 @@ func EncodePDU(pdu PDU) ([]byte, error) {
 	case *AAbort:
 		pduType = TypeAAbort
 	default:
-		panic(fmt.Sprintf("Unknown PDU %v", pdu))
+		logrus.Errorf(fmt.Sprintf("Unknown PDU %v", pdu))
 	}
 	e := dicomio.NewBytesEncoder(binary.BigEndian, dicomio.UnknownVR)
 	pdu.WritePayload(e)
@@ -587,7 +589,7 @@ func decodeAAssociate(d *dicomio.Decoder, pduType Type) *AAssociate {
 
 func (pdu *AAssociate) WritePayload(e *dicomio.Encoder) {
 	if pdu.Type == 0 || pdu.CalledAETitle == "" || pdu.CallingAETitle == "" {
-		panic(*pdu)
+		logrus.Error(*pdu)
 	}
 	e.WriteUInt16(pdu.ProtocolVersion)
 	e.WriteZeros(2) // Reserved
