@@ -330,7 +330,6 @@ func splitDataIntoPDUs(sm *stateMachine, abstractSyntaxName string, command bool
 	context, err := sm.contextManager.lookupByAbstractSyntaxUID(abstractSyntaxName)
 	var pdus []pdu.PDataTf
 	if err != nil {
-		// TODO 不要在这里panic
 		logrus.Errorf(fmt.Sprintf("dicom.stateMachine(%s): Illegal syntax name %s: %s", sm.label, dicomuid.UIDString(abstractSyntaxName), err))
 		return pdus
 	}
@@ -370,7 +369,7 @@ var actionDt1 = &stateAction{"DT-1", "Send P-DATA-TF PDU",
 		e := dicomio.NewBytesEncoder(nil, dicomio.UnknownVR)
 		dimse.EncodeMessage(e, command)
 		if e.Error() != nil {
-			logrus.Errorf(fmt.Sprintf("---------Failed to encode DIMSE cmd %v: %v", command, e.Error()))
+			logrus.Errorf(fmt.Sprintf("---------Failed  to encode DIMSE cmd %v: %v", command, e.Error()))
 		}
 
 		logrus.Infof("dicom_server.stateMachine(%s): Send DIMSE msg: %v", sm.label, command)
