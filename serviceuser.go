@@ -5,7 +5,7 @@ import (
 	"net"
 	"sync"
 
-	"github.com/odincare/odicom"
+	dicom "github.com/odincare/odicom"
 	"github.com/odincare/odicom/dicomio"
 	"github.com/odincare/odicom/dicomtag"
 
@@ -167,19 +167,20 @@ func (su *ServiceUser) waitUntilReady() error {
 
 // Connect 由传来的 serverAddr("host:port")连接server
 // Connect或SetConn必须在CStore调用前调用，etc
-func (su *ServiceUser) Connect(serverAddr string) {
+func (su *ServiceUser) Connect(serverAddr string) error {
 	if su.status != serviceUserInitial {
-		logrus.Error(fmt.Errorf("dicom_server.serviceUser: 连接调用了错误的状态: %v", su.status))
-		return
+		return fmt.Errorf("dicom_server.serviceUser: 连接调用了错误的状态: %v", su.status)
 	}
 
 	conn, err := net.Dial("tcp", serverAddr)
 	if err != nil {
 		logrus.Errorf("dicom_server.serviceUser: Connect(%s): %v", serverAddr, err)
-		su.disp.downcallCh <- stateEvent{event: evt17, pdu: nil, err: err}
+		return err
 	} else {
 		su.disp.downcallCh <- stateEvent{event: evt02, pdu: nil, err: nil, conn: conn}
 	}
+
+	return nil
 }
 
 // CStore 发起一个C-Store请求来传递’ds'到remove peer
